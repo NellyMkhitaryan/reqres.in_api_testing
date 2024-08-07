@@ -1,0 +1,83 @@
+name: Python autotests with Allure
+
+on: 
+  workflow_dispatch:
+    inputs:
+      deployment_target:
+        description: Choose tests set
+        required: true
+        type: choice
+        default: smoke
+        options:
+          - smoke
+          - regression
+          - all
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    name: Run autotests
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          
+      - name: Upgrade Pip
+        run: python -m pip install --upgrade pip
+        
+      - name: Install dependencies
+        run: pip install -r requirements.txt  # Corrected file name
+        
+      - name: Clean up before tests
+        run: rm -rf allure-results allure-report
+        
+      - name: Run all tests
+        if: "github.event.inputs.deployment_target == 'all'"  
+        run: pytest --alluredir=allure-results
+        
+      - name: Run smoke tests
+        if: "github.event.inputs.deployment_target == 'smoke'"  
+        run: pytest -m smoke --alluredir=allure-results
+        
+      - name: Run regression tests
+        if: "github.event.inputs.deployment_target == 'regression'"  
+        run: pytest -m regression --alluredir=allure-results
+        
+      - name: Install Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'microsoft'
+          java-version: '17'
+          
+      - name: Install Allure
+        run: |
+          sudo wget https://github.com/allure-framework/allure2/releases/download/2.30.0/allure-2.30.0.tgz
+          sudo tar -zxvf allure-2.30.0.tgz -C /opt/
+          sudo ln -s /opt/allure-2.30.0/bin/allure /usr/bin/allure
+          
+      - name: Verify Allure Installation
+        run: allure --version
+        
+      - name: Add Executor and Categories in Allure Results
+        run: cp -r categories.json executor.json allure-results/ || echo 
+        
+      - name: Generate report
+        run: allure generate -c allure-results -o allure-report
+        
+      - name: Save Allure report
+        uses: actions/upload-artifact@v3
+        with:
+          name: allure-report
+          path: allure-report
+          retention-days: 1
+           
+      - name: Verify Allure Results Directory
+        run: |
+          if [ ! -d "allure-results" ]; then
+            echo "Allure results directory not found!"
+            exit 1
+          fi  
